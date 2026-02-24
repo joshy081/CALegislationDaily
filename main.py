@@ -117,42 +117,57 @@ def get_bill_text_url(bill_detail):
 # --- Email formatting ---
 
 
-def format_email_subject(bill_number, title, status):
-    """Format the email subject line."""
-    max_title_len = 60
-    short_title = title[:max_title_len] + "..." if len(title) > max_title_len else title
-    return f"{bill_number}: {short_title} [{status}]"
+def format_digest_subject(count, date_str):
+    """Format the digest email subject line."""
+    return f"CA Legislative Update: {count} bill{'s' if count != 1 else ''} with activity — {date_str}"
 
 
-def format_email_body(bill_number, title, description, status, last_action,
-                      last_action_date, sponsors_text, bill_url, text_url):
-    """Format the email body as HTML."""
-    text_link_html = ""
-    if text_url:
-        text_link_html = f"""
-<p><a href="{html.escape(text_url)}" style="color: #1a5276;">Read Full Bill Text</a></p>"""
+def format_bill_row(bill):
+    """Format a single bill as an HTML row for the digest."""
+    bill_number = html.escape(bill["bill_number"])
+    title = html.escape(bill["title"])
+    status = html.escape(bill["status"])
+    last_action = html.escape(bill["last_action"])
+    sponsors = html.escape(bill["sponsors"])
+    bill_url = bill.get("bill_url", "")
+    text_url = bill.get("text_url", "")
 
-    bill_link_html = ""
+    links = []
     if bill_url:
-        bill_link_html = f"""
-<p><a href="{html.escape(bill_url)}" style="color: #1a5276;">View on LegiScan</a></p>"""
+        links.append(f'<a href="{html.escape(bill_url)}" style="color: #1a5276;">LegiScan</a>')
+    if text_url:
+        links.append(f'<a href="{html.escape(text_url)}" style="color: #1a5276;">Full Text</a>')
+    links_html = " | ".join(links) if links else ""
 
-    return f"""<div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto;">
-<h2 style="color: #1a1a1a;">{html.escape(bill_number)}: {html.escape(title)}</h2>
+    return f"""<tr>
+<td style="padding: 12px 0; border-bottom: 1px solid #eee;">
+    <strong style="font-size: 15px;">{bill_number}</strong>
+    <span style="color: #666; font-size: 13px;"> [{status}]</span><br>
+    <span style="font-size: 14px;">{title}</span><br>
+    <span style="color: #555; font-size: 13px;"><em>Latest:</em> {last_action}</span><br>
+    <span style="color: #888; font-size: 12px;">Sponsors: {sponsors}</span><br>
+    <span style="font-size: 12px;">{links_html}</span>
+</td>
+</tr>"""
+
+
+def format_digest_body(bills, date_str):
+    """Format all bills into a single digest email body."""
+    rows = "\n".join(format_bill_row(b) for b in bills)
+    count = len(bills)
+
+    return f"""<div style="font-family: Georgia, serif; max-width: 700px; margin: 0 auto;">
+<h2 style="color: #1a1a1a;">California Legislative Update</h2>
 <p style="color: #666; font-size: 14px;">
-    Status: {html.escape(status)} | Last Action: {html.escape(last_action_date)} | Sponsors: {html.escape(sponsors_text)}
+    {count} bill{'s' if count != 1 else ''} with activity on {html.escape(date_str)}
 </p>
 <hr>
-<p><strong>Description:</strong></p>
-<p>{html.escape(description)}</p>
-<hr>
-<p><strong>Latest Action:</strong></p>
-<p>{html.escape(last_action)}</p>
-{text_link_html}
-{bill_link_html}
+<table style="width: 100%; border-collapse: collapse;">
+{rows}
+</table>
 <hr>
 <p style="font-size: 12px; color: #999;">
-    California Legislature &mdash; {html.escape(bill_number)}<br>
+    California Legislature &mdash; 2025&ndash;2026 Regular Session<br>
     Source: LegiScan
 </p>
 </div>"""
@@ -207,11 +222,6 @@ def process_bills(days=1):
             "bill_url": bill_url,
             "text_url": text_url,
             "external_id": f"LS-{bill_id}",
-            "email_subject": format_email_subject(bill_number, title, status_text),
-            "email_body": format_email_body(
-                bill_number, title, description, status_text, last_action,
-                last_action_date, sponsors_text, bill_url, text_url,
-            ),
         }
         bills.append(bill)
 
@@ -248,10 +258,13 @@ def ca_legislation_daily(request):
     except Exception as e:
         return jsonify({"error": f"Internal error: {str(e)}"}), 500
 
+    today_str = datetime.now(timezone.utc).strftime("%B %d, %Y")
     response_data = {
         "count": len(bills),
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "days": days,
+        "email_subject": format_digest_subject(len(bills), today_str),
+        "email_body": format_digest_body(bills, today_str) if bills else "",
         "bills": bills,
     }
 
