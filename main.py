@@ -7,8 +7,10 @@ Zapier to send.
 Endpoint: GET /?days=1&format=email
 """
 
+import base64
 import html
 import os
+import re
 from datetime import datetime, timedelta, timezone
 
 import functions_framework
@@ -57,6 +59,46 @@ def fetch_bill_detail(bill_id):
     """Fetch full detail for a single bill."""
     data = legiscan_request("getBill", id=bill_id)
     return data.get("bill", {})
+
+
+def fetch_bill_text(doc_id):
+    """Fetch bill text by doc_id, decode from base64, and return plain text."""
+    data = legiscan_request("getBillText", id=doc_id)
+    text_data = data.get("text", {})
+    doc = text_data.get("doc", "")
+    if not doc:
+        return ""
+    decoded = base64.b64decode(doc).decode("utf-8", errors="replace")
+    # Strip HTML tags and normalize whitespace
+    plain = re.sub(r"<[^>]+>", " ", decoded)
+    plain = re.sub(r"\s+", " ", plain).strip()
+    return plain
+
+
+def extract_digest(plain_text):
+    """Extract the Legislative Counsel's Digest from CA bill text."""
+    start = plain_text.find("LEGISLATIVE COUNSEL")
+    if start < 0:
+        return ""
+    # Skip past the header
+    digest_start = plain_text.find(".", start)
+    if digest_start < 0:
+        return ""
+    digest_start += 2  # skip ". "
+    # Find where the digest ends
+    for marker in ["Digest Key Vote", "THE PEOPLE OF THE STATE",
+                    "The people of the State", "SECTION 1.", "Section 1."]:
+        end = plain_text.find(marker, digest_start)
+        if end > 0:
+            break
+    else:
+        end = digest_start + 2000
+    digest = plain_text[digest_start:end].strip()
+    # Trim to ~6 sentences for readability
+    sentences = re.split(r"(?<=\.)\s+", digest)
+    if len(sentences) > 6:
+        digest = " ".join(sentences[:6])
+    return digest
 
 
 def filter_bills_by_date(master_list, days=1):
@@ -129,6 +171,7 @@ def format_bill_row(bill):
     status = html.escape(bill["status"])
     last_action = html.escape(bill["last_action"])
     sponsors = html.escape(bill["sponsors"])
+    summary = html.escape(bill.get("summary", ""))
     bill_url = bill.get("bill_url", "")
     text_url = bill.get("text_url", "")
 
@@ -139,11 +182,16 @@ def format_bill_row(bill):
         links.append(f'<a href="{html.escape(text_url)}" style="color: #1a5276;">Full Text</a>')
     links_html = " | ".join(links) if links else ""
 
+    summary_html = ""
+    if summary:
+        summary_html = f"""<br>
+    <span style="color: #444; font-size: 13px;">{summary}</span>"""
+
     return f"""<tr>
 <td style="padding: 12px 0; border-bottom: 1px solid #eee;">
     <strong style="font-size: 15px;">{bill_number}</strong>
     <span style="color: #666; font-size: 13px;"> [{status}]</span><br>
-    <span style="font-size: 14px;">{title}</span><br>
+    <span style="font-size: 14px;">{title}</span>{summary_html}<br>
     <span style="color: #555; font-size: 13px;"><em>Latest:</em> {last_action}</span><br>
     <span style="color: #888; font-size: 12px;">Sponsors: {sponsors}</span><br>
     <span style="font-size: 12px;">{links_html}</span>
@@ -237,11 +285,24 @@ def process_bills(days=1):
         bill_url = detail.get("url", bill_summary.get("url", ""))
         text_url = get_bill_text_url(detail)
 
+        # Fetch Legislative Counsel's Digest from the latest bill text
+        summary = ""
+        texts = detail.get("texts", [])
+        if texts:
+            doc_id = texts[-1].get("doc_id")
+            if doc_id:
+                try:
+                    plain_text = fetch_bill_text(doc_id)
+                    summary = extract_digest(plain_text)
+                except requests.RequestException:
+                    pass
+
         bill = {
             "bill_id": bill_id,
             "bill_number": bill_number,
             "title": title,
             "description": description,
+            "summary": summary,
             "status": status_text,
             "status_code": status_code,
             "last_action": last_action,
