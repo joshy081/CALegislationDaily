@@ -151,10 +151,40 @@ def format_bill_row(bill):
 </tr>"""
 
 
+STATUS_ORDER = ["Introduced", "Engrossed", "Enrolled", "Passed", "Vetoed", "Failed/Dead"]
+
+
 def format_digest_body(bills, date_str):
-    """Format all bills into a single digest email body."""
-    rows = "\n".join(format_bill_row(b) for b in bills)
+    """Format all bills into a single digest email body, grouped by status."""
     count = len(bills)
+
+    # Group bills by status
+    groups = {}
+    for bill in bills:
+        status = bill.get("status", "Other")
+        groups.setdefault(status, []).append(bill)
+
+    # Build sections in a consistent order
+    sections_html = ""
+    for status in STATUS_ORDER:
+        if status not in groups:
+            continue
+        section_bills = groups.pop(status)
+        rows = "\n".join(format_bill_row(b) for b in section_bills)
+        sections_html += f"""
+<h3 style="color: #333; margin-top: 24px; margin-bottom: 8px;">{html.escape(status)} ({len(section_bills)})</h3>
+<table style="width: 100%; border-collapse: collapse;">
+{rows}
+</table>"""
+
+    # Any remaining statuses not in the predefined order
+    for status, section_bills in groups.items():
+        rows = "\n".join(format_bill_row(b) for b in section_bills)
+        sections_html += f"""
+<h3 style="color: #333; margin-top: 24px; margin-bottom: 8px;">{html.escape(status)} ({len(section_bills)})</h3>
+<table style="width: 100%; border-collapse: collapse;">
+{rows}
+</table>"""
 
     return f"""<div style="font-family: Georgia, serif; max-width: 700px; margin: 0 auto;">
 <h2 style="color: #1a1a1a;">California Legislative Update</h2>
@@ -162,9 +192,7 @@ def format_digest_body(bills, date_str):
     {count} bill{'s' if count != 1 else ''} with activity on {html.escape(date_str)}
 </p>
 <hr>
-<table style="width: 100%; border-collapse: collapse;">
-{rows}
-</table>
+{sections_html}
 <hr>
 <p style="font-size: 12px; color: #999;">
     California Legislature &mdash; 2025&ndash;2026 Regular Session<br>
