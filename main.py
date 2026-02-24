@@ -151,7 +151,7 @@ def format_bill_row(bill):
 </tr>"""
 
 
-STATUS_ORDER = ["Introduced", "Engrossed", "Enrolled", "Passed", "Vetoed", "Failed/Dead"]
+STATUS_ORDER = ["Passed", "Enrolled", "Engrossed", "Introduced", "Vetoed", "Failed/Dead"]
 
 
 def format_digest_body(bills, date_str):
