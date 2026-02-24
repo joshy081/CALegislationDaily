@@ -24,7 +24,7 @@ Recipients
 - **State:** CA (California)
 - **API Key:** Set via `LEGISCAN_API_KEY` environment variable
 - **Free tier:** 30,000 queries/month
-- **Change detection:** Filter `getMasterListRaw` by `last_action_date`
+- **Change detection:** Filter `getMasterList` by `last_action_date`
 
 ## Endpoint
 `GET /?days=1&format=email`

@@ -47,9 +47,9 @@ def legiscan_request(op, **params):
     return data
 
 
-def fetch_master_list_raw():
-    """Fetch the raw master list of all CA bills in the current session."""
-    data = legiscan_request("getMasterListRaw", state=CA_STATE_CODE)
+def fetch_master_list():
+    """Fetch the master list of all CA bills in the current session."""
+    data = legiscan_request("getMasterList", state=CA_STATE_CODE)
     return data.get("masterlist", {})
 
 
@@ -163,7 +163,7 @@ def format_email_body(bill_number, title, description, status, last_action,
 
 def process_bills(days=1):
     """Fetch and process CA bills with recent activity."""
-    master_list = fetch_master_list_raw()
+    master_list = fetch_master_list()
     changed_bills = filter_bills_by_date(master_list, days=days)
     bills = []
 
